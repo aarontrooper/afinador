@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Afinador Vocal PRO</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body, html { height:100%; overflow:hidden; font-family:'Inter',sans-serif; }
+    .bg-grad { background: radial-gradient(circle at center, #0a0a1a, #000000); }
+    @keyframes glow { 0%,100% { text-shadow: 0 0 15px #facc15; } 50% { text-shadow: 0 0 30px #facc15; } }
+    .glow { animation: glow 1.5s infinite; }
+  </style>
+</head>
+<body class="bg-grad text-white">
+
+  <!-- Menú -->
+  <div id="menu" class="fixed top-0 left-0 w-80 h-full bg-black/90 backdrop-blur-xl border-r border-purple-600/40 p-6 z-50 transition-transform">
+    <button id="closeMenu" class="absolute right-4 top-4 text-2xl font-bold text-purple-400 hover:text-purple-300">×</button>
+    
+    <h1 class="text-3xl font-bold mb-2 bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
+      Afinador PRO
+    </h1>
+    <p class="text-sm text-gray-400 mb-8">Rango Exacto • Sensible • Sin Ruido</p>
+
+    <div class="space-y-6">
+      <!-- Micrófono -->
+      <div>
+        <label class="block text-sm font-semibold mb-2">Micrófono</label>
+        <button id="micBtn" class="w-full flex items-center justify-center gap-3 px-6 py-4 rounded-2xl font-bold text-lg transition-all bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600">
+          <svg id="micIcon" class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+          </svg>
+          Iniciar
+        </button>
+        <div id="listening" class="hidden mt-2 flex items-center gap-2 text-sm">
+          <div class="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
+          <span>Escuchando...</span>
+        </div>
+      </div>
+
+      <!-- Modo -->
+      <div>
+        <label class="block text-sm font-semibold mb-2">Modo</label>
+        <select id="modeSelect" class="w-full bg-gray-900 border border-purple-500/50 rounded-xl px-4 py-3 text-lg font-bold focus:ring-2 focus:ring-purple-500">
+          <option value="target">Nota Objetivo</option>
+          <option value="free">Modo Libre</option>
+        </select>
+      </div>
+
+      <!-- Nota Objetivo -->
+      <div id="targetContainer">
+        <label class="block text-sm font-semibold mb-2">Nota Objetivo</label>
+        <select id="targetNote" class="w-full bg-gray-900 border border-purple-500/50 rounded-xl px-4 py-3 text-lg font-bold focus:ring-2 focus:ring-purple-500"></select>
+      </div>
+
+      <!-- RANGO EXACTO -->
+      <div>
+        <label class="block text-sm font-semibold mb-2">Rango de Notas</label>
+        <div class="grid grid-cols-2 gap-3">
+          <select id="startNote" class="w-full bg-gray-900 border border-purple-500/50 rounded-xl px-4 py-3 text-lg font-bold focus:ring-2 focus:ring-purple-500">
+            <!-- JS -->
+          </select>
+          <select id="endNote" class="w-full bg-gray-900 border border-purple-500/50 rounded-xl px-4 py-3 text-lg font-bold focus:ring-2 focus:ring-purple-500">
+            <!-- JS -->
+          </select>
+        </div>
+      </div>
+
+      <div class="pt-4 border-t border-gray-700 text-xs text-gray-500">
+        <p>• Elige nota inicial y final</p>
+        <p>• Sin línea en silencio</p>
+        <p>• Línea delgada y sensible</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Botón menú -->
+  <button id="openMenu" class="fixed top-4 left-4 z-40 text-3xl bg-purple-600/80 p-3 rounded-full hover:bg-purple-500 hidden">
+    Menu
+  </button>
+
+  <!-- Visualizador -->
+  <div class="relative w-full h-full">
+    <canvas id="canvas" class="absolute inset-0 w-full h-full"></canvas>
+
+    <!-- Info -->
+    <div class="absolute top-8 left-1/2 -translate-x-1/2 text-center">
+      <div id="closestNote" class="text-5xl font-bold text-yellow-400">--</div>
+      <div id="closestCents" class="text-3xl font-bold text-yellow-300">0¢</div>
+    </div>
+
+    <div class="absolute bottom-8 left-1/2 -translate-x-1/2 text-center">
+      <div id="centsDisplay" class="text-7xl font-bold">0¢</div>
+      <div class="text-xl text-gray-400">desviación</div>
+    </div>
+  </div>
+
+  <script>
+    // === Config ===
+    const notes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+    const octaves = [1, 2, 3, 4, 5];
+    const allNotes = octaves.flatMap(o => notes.map(n => `${n}${o}`));
+    
+    let visibleNotes = [];
+    let targetNote = 'C3';
+    let mode = 'target';
+    let startNote = 'C2';
+    let endNote = 'C4';
+    let history = [];
+    let lastValidY = null;
+    let audioCtx, analyser, mic, raf;
+
+    // === COLORES POR NOTA BASE ===
+    const noteColors = {
+      'C': '#ff006e', 'C#': '#8338ec', 'D': '#ffbe0b', 'D#': '#06ffa4',
+      'E': '#00b4d8', 'F': '#f15bb5', 'F#': '#fb5607', 'G': '#06d6a0',
+      'G#': '#7209b7', 'A': '#ff4365', 'A#': '#3a86ff', 'B': '#ff9f1c'
+    };
+
+    // DOM
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const menu = document.getElementById('menu');
+    const closeMenu = document.getElementById('closeMenu');
+    const openMenu = document.getElementById('openMenu');
+    const micBtn = document.getElementById('micBtn');
+    const listening = document.getElementById('listening');
+    const modeSelect = document.getElementById('modeSelect');
+    const targetContainer = document.getElementById('targetContainer');
+    const targetNoteSelect = document.getElementById('targetNote');
+    const startNoteSelect = document.getElementById('startNote');
+    const endNoteSelect = document.getElementById('endNote');
+    const closestNote = document.getElementById('closestNote');
+    const closestCents = document.getElementById('closestCents');
+    const centsDisplay = document.getElementById('centsDisplay');
+
+    // === Resize ===
+    function resize() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      draw();
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    // === Rango personalizado ===
+    function updateRange() {
+      startNote = startNoteSelect.value;
+      endNote = endNoteSelect.value;
+      const startIdx = allNotes.indexOf(startNote);
+      const endIdx = allNotes.indexOf(endNote);
+      if (startIdx === -1 || endIdx === -1) return;
+
+      visibleNotes = allNotes.slice(
+        Math.min(startIdx, endIdx),
+        Math.max(startIdx, endIdx) + 1
+      );
+
+      if (!visibleNotes.includes(targetNote)) {
+        targetNote = visibleNotes[Math.floor(visibleNotes.length / 2)];
+      }
+      fillTargetNotes();
+      draw();
+    }
+
+    function fillTargetNotes() {
+      targetNoteSelect.innerHTML = '';
+      visibleNotes.forEach(note => {
+        const opt = new Option(note, note);
+        if (note === targetNote) opt.selected = true;
+        targetNoteSelect.appendChild(opt);
+      });
+    }
+
+    function fillRangeSelects() {
+      [startNoteSelect, endNoteSelect].forEach(sel => {
+        sel.innerHTML = '';
+        allNotes.forEach(note => {
+          const opt = new Option(note, note);
+          sel.appendChild(opt);
+        });
+      });
+      startNoteSelect.value = startNote;
+      endNoteSelect.value = endNote;
+    }
+
+    // === Frecuencia ===
+    function getFreq(note) {
+      const map = { 'C':0, 'C#':1, 'D':2, 'D#':3, 'E':4, 'F':5, 'F#':6, 'G':7, 'G#':8, 'A':9, 'A#':10, 'B':11 };
+      const match = note.match(/([A-G]#?)(\d)/);
+      if (!match) return 440;
+      const midi = (parseInt(match[2]) + 1) * 12 + map[match[1]];
+      return 440 * Math.pow(2, (midi - 69) / 12);
+    }
+
+    function freqToNote(freq) {
+      const noteNum = 12 * (Math.log(freq / 440) / Math.log(2)) + 69;
+      const noteIndex = Math.round(noteNum) % 12;
+      const octave = Math.floor(noteNum / 12) - 1;
+      const cents = Math.round((noteNum - Math.round(noteNum)) * 100);
+      return { note: `${notes[noteIndex]}${octave}`, cents };
+    }
+
+    function findClosestNote(freq) {
+      let closest = visibleNotes[0];
+      let minDiff = Infinity;
+      visibleNotes.forEach(n => {
+        const diff = Math.abs(freq - getFreq(n));
+        if (diff < minDiff) { minDiff = diff; closest = n; }
+      });
+      const targetFreq = getFreq(closest);
+      const centsDiff = Math.round(1200 * Math.log2(freq / targetFreq));
+      return { note: closest, cents: centsDiff };
+    }
+
+    // === Autocorrelación SENSIBLE ===
+    function autoCorrelate(buf, sr) {
+      const rms = Math.sqrt(buf.reduce((a,b)=>a+b*b,0)/buf.length);
+      if (rms < 0.018) return -1; // Más sensible al silencio
+      let best = 0, bestVal = Infinity;
+      for (let i = 30; i < 1000; i++) {
+        let sum = 0;
+        for (let j = 0; j < buf.length - i; j++) sum += Math.abs(buf[j] - buf[j+i]);
+        if (sum < bestVal) { bestVal = sum; best = i; }
+      }
+      return best > 0 ? sr / best : -1;
+    }
+
+    // === Update Pitch ===
+    function update() {
+      if (!analyser) return;
+      const buffer = new Float32Array(analyser.fftSize);
+      analyser.getFloatTimeDomainData(buffer);
+      const freq = autoCorrelate(buffer, audioCtx.sampleRate);
+
+      if (freq > 60 && freq < 1200) {
+        const { note, cents } = freqToNote(freq);
+        if (visibleNotes.includes(note)) {
+          const closest = findClosestNote(freq);
+
+          closestNote.textContent = closest.note;
+          closestCents.textContent = (closest.cents > 0 ? '+' : '') + closest.cents + '¢';
+
+          const now = Date.now();
+          history.push({ note, cents, freq, time: now, x: null });
+          if (history.length > 300) history.shift();
+
+          if (mode === 'free') {
+            centsDisplay.textContent = (closest.cents > 0 ? '+' : '') + closest.cents + '¢';
+            centsDisplay.className = Math.abs(closest.cents) < 8 ? 'text-green-400 glow' : Math.abs(closest.cents) < 20 ? 'text-yellow-400' : 'text-red-400';
+          } else {
+            const targetCents = Math.round(1200 * Math.log2(freq / getFreq(targetNote)));
+            centsDisplay.textContent = (targetCents > 0 ? '+' : '') + targetCents + '¢';
+            centsDisplay.className = Math.abs(targetCents) < 8 ? 'text-green-400 glow' : Math.abs(targetCents) < 20 ? 'text-yellow-400' : 'text-red-400';
+          }
+
+          lastValidY = null; // Reset en silencio
+        }
+      } else {
+        // Silencio → no dibujar línea conectora
+        if (history.length > 0 && Date.now() - history[history.length-1].time > 100) {
+          history = []; // Limpiar si hay silencio prolongado
+        }
+      }
+
+      draw();
+      raf = requestAnimationFrame(update);
+    }
+
+    // === Dibujar ===
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      const h = canvas.height;
+      const w = canvas.width;
+      const noteH = h / visibleNotes.length;
+
+      // Líneas de notas
+      visibleNotes.forEach((note, i) => {
+        const y = (visibleNotes.length - 1 - i) * noteH + noteH / 2;
+        const baseNote = note.replace(/\d/g, '');
+        const isSharp = note.includes('#');
+        const isTarget = mode === 'target' && note === targetNote;
+        const isClosest = mode === 'free' && note === closestNote.textContent;
+
+        ctx.strokeStyle = isTarget || isClosest ? '#10b981' : noteColors[baseNote];
+        ctx.globalAlpha = isSharp ? 0.65 : 1.0;
+        ctx.lineWidth = isTarget || isClosest ? 5 : 2.5;
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+        ctx.globalAlpha = 1.0;
+
+        ctx.fillStyle = ctx.strokeStyle;
+        ctx.font = isTarget || isClosest ? 'bold 26px Inter' : '18px Inter';
+        ctx.fillText(note, 35, y - 12);
+      });
+
+      // Historial como onda (solo cuando hay voz)
+      if (history.length > 0) {
+        ctx.strokeStyle = '#facc15';
+        ctx.lineWidth = 3; // DELGADA
+        ctx.shadowBlur = 20;
+        ctx.shadowColor = '#facc15';
+        ctx.beginPath();
+
+        const now = Date.now();
+        const duration = 4000; // 4 segundos
+        let first = true;
+
+        for (let i = history.length - 1; i >= 0; i--) {
+          const p = history[i];
+          if (now - p.time > duration) break;
+
+          const age = (now - p.time) / duration;
+          const x = w * (1 - age);
+
+          const idx = visibleNotes.indexOf(p.note);
+          if (idx === -1) continue;
+
+          const baseY = (visibleNotes.length - 1 - idx) * noteH + noteH / 2;
+          const y = baseY + (p.cents / 100) * noteH;
+
+          if (first) { ctx.moveTo(x, y); first = false; }
+          else ctx.lineTo(x, y);
+        }
+
+        if (!first) ctx.stroke();
+        ctx.shadowBlur = 0;
+      }
+    }
+
+    // === Micrófono ===
+    async function start() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        analyser = audioCtx.createAnalyser();
+        mic = audioCtx.createMediaStreamSource(stream);
+        analyser.fftSize = 2048;
+        mic.connect(analyser);
+        history = [];
+        update();
+        micBtn.innerHTML = `<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg> Detener`;
+        micBtn.classList.replace('from-purple-500', 'from-red-500');
+        micBtn.classList.replace('to-pink-500', 'to-red-600');
+        listening.classList.remove('hidden');
+      } catch (e) {
+        alert("Error: Permite el acceso al micrófono");
+      }
+    }
+
+    function stop() {
+      if (raf) cancelAnimationFrame(raf);
+      if (mic) mic.disconnect();
+      if (audioCtx) audioCtx.close();
+      history = [];
+      micBtn.innerHTML = `<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg> Iniciar`;
+      micBtn.classList.replace('from-red-500', 'from-purple-500');
+      micBtn.classList.replace('to-red-600', 'to-pink-500');
+      listening.classList.add('hidden');
+      centsDisplay.textContent = '0¢';
+      centsDisplay.className = '';
+      draw();
+    }
+
+    // === Eventos ===
+    closeMenu.onclick = () => { menu.style.transform = 'translateX(-100%)'; openMenu.classList.remove('hidden'); };
+    openMenu.onclick = () => { menu.style.transform = 'translateX(0)'; openMenu.classList.add('hidden'); };
+    micBtn.onclick = () => { listening.classList.contains('hidden') ? start() : stop(); };
+    modeSelect.onchange = (e) => { mode = e.target.value; targetContainer.style.display = mode === 'target' ? 'block' : 'none'; draw(); };
+    targetNoteSelect.onchange = (e) => { targetNote = e.target.value; draw(); };
+    startNoteSelect.onchange = updateRange;
+    endNoteSelect.onchange = updateRange;
+
+    // === Init ===
+    fillRangeSelects();
+    updateRange();
+    draw();
+  </script>
+</body>
+</html>
